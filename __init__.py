@@ -1,9 +1,9 @@
 bl_info = {
     "name": "Vertex Data Tools",
     "author": "ChatGPT",
-    "version": (1, 9, 0),
+    "version": (1, 9, 2),
     "blender": (4, 0, 0),
-    "location": "View3D > Sidebar > VData",
+    "location": "View3D > Sidebar > Tool",
     "description": "Tools for managing vertex color and vertex group workflows",
     "category": "Mesh",
 }
@@ -557,7 +557,7 @@ class VIEW3D_PT_vertex_data_tools_panel(Panel):
     bl_idname = "VIEW3D_PT_vertex_data_tools_panel"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "VData"
+    bl_category = "Tool"
 
     def draw(self, context):
         layout = self.layout
