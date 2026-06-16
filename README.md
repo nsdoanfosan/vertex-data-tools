@@ -6,10 +6,11 @@ A small Blender add-on collection for managing vertex-related data used in real-
 
 - Vertex Color value assignment
 - Vertex Group binary assignment
+- Proximity-weighted shape key transfer
 
 ## Vertex Color Features
 
-- Adds a `VData` panel to the 3D View sidebar.
+- Adds a `Vertex Data Tools` panel to the 3D View sidebar `Tool` tab.
 - Buttons for `0.0`, `0.2`, `0.4`, `0.6`, `0.8`, `1.0`.
 - Uses the active real Color Attribute if available.
 - Creates a `Color` attribute automatically when no valid Color Attribute exists.
@@ -37,15 +38,25 @@ A small Blender add-on collection for managing vertex-related data used in real-
 - `1` adds selected vertices to the group with weight `1.0`.
 - `0` removes selected vertices from the group, which is equivalent to weight `0` for most Blender and game-engine workflows.
 
+## Shape Key Transfer Features
+
+- Select a source surface mesh with shape keys and the active target mesh.
+- Samples nearby source vertices and smoothly blends their deformation.
+- Bakes each source shape key onto the active target mesh.
+- Does not require a cage or a temporary deform modifier.
+- Intended for meshes outside the source surface, such as eyebrows, eyelashes, and clothing.
+
 ## Install in Blender
 
-1. Open Blender.
-2. Go to `Edit > Preferences > Add-ons`.
-3. Click `Install...`.
-4. Select the `.zip` file.
-5. Enable `Vertex Data Tools`.
-6. Open the 3D View sidebar with `N`.
-7. Use the `VData` tab.
+This repository is deployed live with a Windows junction into Blender's
+`scripts/addons` directory, so editing the source updates the add-on directly.
+Restart or reload Blender to pick up changes, then:
+
+1. Open the 3D View sidebar with `N`.
+2. Use the `Tool` tab.
+
+To install on another machine instead, zip the folder and use
+`Edit > Preferences > Add-ons > Install...`, then enable `Vertex Data Tools`.
 
 ## Git usage
 
