@@ -1,85 +1,134 @@
 # Vertex Data Tools
 
-A small Blender add-on collection for managing vertex-related data used in real-time art workflows.
+Blender add-on for three common real-time art tasks:
 
-## Feature Set
+- assigning stepped grayscale vertex-color values;
+- adding or removing vertices from a named vertex group;
+- transferring character shape keys to a nearby mesh by proximity.
 
-- Vertex Color value assignment
-- Vertex Group binary assignment
-- Proximity-weighted shape key transfer
+The panel is in **3D Viewport > Sidebar (`N`) > Tool > Vertex Data Tools**.
 
-## Vertex Color Features
+## Installation
 
-- Adds a `Vertex Data Tools` panel to the 3D View sidebar `Tool` tab.
-- Buttons for `0.0`, `0.2`, `0.4`, `0.6`, `0.8`, `1.0`.
-- Uses the active real Color Attribute if available.
-- Creates a `Color` attribute automatically when no valid Color Attribute exists.
-- Ignores non-color attributes such as `custom_normal`.
-- Object Mode:
-  - Applies the selected value to the whole selected mesh object.
-- Edit Mode:
-  - Applies the selected value only to selected vertices, edges, or faces.
-- Writes grayscale color as:
-  - `(value, value, value, 1.0)`
+1. Download or clone this repository.
+2. Zip the repository folder with `__init__.py` at the zip root.
+3. In Blender, open **Edit > Preferences > Add-ons > Install from Disk**.
+4. Select the zip and enable **Vertex Data Tools**.
 
-## Vertex Group Features
+Blender 4.0 or newer is required.
 
-- Text field for the target vertex group name.
-- Default vertex group name:
-  - `head`
-- Buttons:
-  - `0`
-  - `1`
-- If the vertex group does not exist, it is created automatically.
-- Object Mode:
-  - Applies to all vertices in the selected mesh objects.
-- Edit Mode:
-  - Applies only to selected vertices, edges, or faces.
-- `1` adds selected vertices to the group with weight `1.0`.
-- `0` removes selected vertices from the group, which is equivalent to weight `0` for most Blender and game-engine workflows.
+## Object Mode and Edit Mode
 
-## Shape Key Transfer Features
+The vertex-color and vertex-group tools use the current mode as their scope:
 
-- Select a source surface mesh with shape keys and the active target mesh.
-- Samples nearby source vertices and smoothly blends their deformation.
-- Bakes each source shape key onto the active target mesh.
-- Does not require a cage or a temporary deform modifier.
-- Intended for meshes outside the source surface, such as eyebrows, eyelashes, and clothing.
+- **Object Mode** changes the whole mesh of every selected mesh object.
+- **Edit Mode** changes selected vertices. Selected edges and faces work
+  because their vertices are selected by Blender.
 
-## Install in Blender
+The top of the panel shows the current target scope.
 
-This repository is deployed live with a Windows junction into Blender's
-`scripts/addons` directory, so editing the source updates the add-on directly.
-Restart or reload Blender to pick up changes, then:
+## Vertex Color
 
-1. Open the 3D View sidebar with `N`.
-2. Use the `Tool` tab.
+Use this section to assign grayscale values commonly used as masks in Unreal or
+other real-time shaders.
 
-To install on another machine instead, zip the folder and use
-`Edit > Preferences > Add-ons > Install...`, then enable `Vertex Data Tools`.
+Steps:
 
-## Git usage
+1. Select one or more mesh objects.
+2. To initialize the whole object, stay in Object Mode. To paint a region,
+   enter Edit Mode and select the target geometry.
+3. Press `0.0`, `0.2`, `0.4`, `0.6`, `0.8`, or `1.0`.
 
-Recommended structure:
+The tool writes:
 
 ```text
-vertex_data_tools/
-├── __init__.py
-├── README.md
-└── .gitignore
+(value, value, value, 1.0)
 ```
 
-## Notes
+It uses the active real Color Attribute when possible. Valid attributes are
+`BYTE_COLOR` or `FLOAT_COLOR` on the `POINT` or `CORNER` domain. If none exists,
+the tool creates a color attribute named `Color`. Non-color attributes such as
+custom normals are ignored.
 
-For Unreal Engine mask workflows, a common vertex color workflow is:
+Example mask workflow:
 
-1. Object Mode: set the whole object to `0.0`.
-2. Edit Mode: select specific faces/edges/vertices.
-3. Assign `0.2`, `0.4`, `0.6`, `0.8`, or `1.0` as needed.
+1. In Object Mode, press `0.0` to clear the whole object.
+2. Enter Edit Mode and select the desired faces.
+3. Press a higher value for the selected area.
 
-For vertex groups, a common workflow is:
+## Vertex Group
 
-1. Enter the group name, for example `head`.
-2. Object Mode: press `0` to clear the group from the whole object, if needed.
-3. Edit Mode: select the target vertices/faces.
-4. Press `1` to add them to the group.
+Use this section for binary membership: weight `1` or not in the group.
+
+Steps:
+
+1. Enter the target group name. The default is `head`.
+2. Select mesh objects or enter Edit Mode and select geometry.
+3. Press `1` to add the vertices with weight `1.0`.
+4. Press `0` to remove the vertices from the group.
+
+The group is created automatically if it does not exist. `0` removes
+membership rather than storing an explicit zero weight.
+
+## Shape Key Transfer
+
+Use this to copy deformations from a character surface to nearby meshes such as
+eyebrows, eyelashes, clothing, or accessories.
+
+Steps:
+
+1. Switch to **Object Mode**.
+2. Select exactly two mesh objects:
+   - the character/source mesh with shape keys;
+   - the receiving mesh.
+3. Make the receiving mesh the **active object** last.
+4. Optionally enable **Overwrite Existing**.
+5. Press **Transfer Proximity Shape Keys**.
+
+The tool samples up to eight nearby source vertices for each receiving vertex,
+blends their deformation by inverse-distance weighting, and creates one
+receiving shape key for every non-Basis source key.
+
+Important behavior:
+
+- the source must have at least one non-Basis shape key;
+- the receiver gets a `Basis` key automatically when needed;
+- existing keys with matching names stop the operation unless **Overwrite
+  Existing** is enabled;
+- matching relative shape-key relationships are reused when the corresponding
+  receiver key exists;
+- current source and receiver shape-key values are restored after processing;
+- no cage or temporary modifier is created.
+
+This is a proximity transfer, not a surface-wrap solver. Check the result when
+the receiver is far from the source, crosses to another body region, or has very
+different topology.
+
+## Developer Map
+
+The complete add-on currently lives in:
+
+```text
+vertex-data-tools/
+|-- __init__.py
+`-- README.md
+```
+
+Important code areas in `__init__.py`:
+
+- mode-dependent targeting: `get_target_objects`;
+- color-attribute validation and writes: `is_real_color_attribute`,
+  `apply_color_object_mode`, `apply_color_edit_mode`;
+- vertex-group writes: `apply_group_object_mode`, `apply_group_edit_mode`;
+- proximity binding and shape-key creation: `create_proximity_bindings`,
+  `add_proximity_shape_key`;
+- operators: `MESH_OT_vdt_set_active_vertex_color_value`,
+  `MESH_OT_vdt_set_vertex_group_value`,
+  `OBJECT_OT_vdt_transfer_surface_shape_keys`;
+- UI and settings: `VDT_Properties`,
+  `VIEW3D_PT_vertex_data_tools_panel`.
+
+The main transfer tuning constants are `PROXIMITY_SAMPLE_COUNT` and
+`DEFORMATION_EPSILON`. Preserve the operator's rollback path when changing the
+shape-key workflow so a partial failure does not leave temporary or half-created
+keys behind.
