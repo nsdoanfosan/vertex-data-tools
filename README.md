@@ -5,6 +5,8 @@ Blender add-on for three common real-time art tasks:
 - assigning stepped grayscale vertex-color values;
 - adding or removing vertices from a named vertex group;
 - transferring character shape keys to a nearby mesh by proximity.
+- storing an export transfer source pointer for shape-key and robust-weight
+  transfer tests.
 
 The panel is in **3D Viewport > Sidebar (`N`) > Tool > Vertex Data Tools**.
 
@@ -104,6 +106,21 @@ This is a proximity transfer, not a surface-wrap solver. Check the result when
 the receiver is far from the source, crosses to another body region, or has very
 different topology.
 
+## Export Transfer Source
+
+Use this section to store a source mesh pointer on a target mesh or live Hair
+Tool curves object. The pointer survives object renaming because Blender stores
+the actual object reference.
+
+Steps:
+
+1. Select the target mesh or live Hair Tool curves object.
+2. Set **Transfer Source** to the body/source mesh with the object picker.
+3. For mesh targets, press **Shape Keys**, **Weights**, or **Shape Keys +
+   Robust Weights**.
+
+The weight buttons require the Robust Weight Transfer add-on to be enabled.
+
 ## Developer Map
 
 The complete add-on currently lives in:
@@ -122,6 +139,11 @@ Important code areas in `__init__.py`:
 - vertex-group writes: `apply_group_object_mode`, `apply_group_edit_mode`;
 - proximity binding and shape-key creation: `create_proximity_bindings`,
   `add_proximity_shape_key`;
+- export transfer source storage: `VDT_ObjectProperties`;
+- pointer-based shape-key and robust-weight transfer:
+  `OBJECT_OT_vdt_pointer_transfer_shape_keys`,
+  `OBJECT_OT_vdt_pointer_transfer_weights`,
+  `OBJECT_OT_vdt_pointer_transfer_all`;
 - operators: `MESH_OT_vdt_set_active_vertex_color_value`,
   `MESH_OT_vdt_set_vertex_group_value`,
   `OBJECT_OT_vdt_transfer_surface_shape_keys`;

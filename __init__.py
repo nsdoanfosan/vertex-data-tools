@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Vertex Data Tools",
     "author": "PARK",
-    "version": (1, 14, 0),
+    "version": (1, 17, 0),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Tool",
     "description": "Tools for managing vertex color and vertex group workflows",
@@ -54,6 +54,22 @@ class VDT_Properties(PropertyGroup):
         name="Overwrite Existing",
         default=False,
         description="Replace clothing shape keys with matching character shape key names",
+    )
+
+
+def poll_transfer_source(self, obj):
+    return obj is not None and obj.type == 'MESH'
+
+
+class VDT_ObjectProperties(PropertyGroup):
+    transfer_source: PointerProperty(
+        name="Transfer Source",
+        description=(
+            "Body or surface mesh used as the source for Shape Keys and "
+            "Robust Weight Transfer"
+        ),
+        type=bpy.types.Object,
+        poll=poll_transfer_source,
     )
 
 
@@ -699,6 +715,188 @@ class OBJECT_OT_vdt_transfer_surface_shape_keys(Operator):
         return {'FINISHED'}
 
 
+def get_pointer_transfer_pair(context):
+    target = context.active_object
+    if not target or target.type != 'MESH':
+        raise RuntimeError("Select the target mesh as the active object.")
+
+    source = target.vdt_object_props.transfer_source
+    if not source:
+        raise RuntimeError('Set the active target mesh "Transfer Source".')
+    if source == target:
+        raise RuntimeError("Transfer Source and target must be different objects.")
+    if source.type != 'MESH':
+        raise RuntimeError("Transfer Source must be a mesh object.")
+
+    return source, target
+
+
+def capture_selection_context(context):
+    return {
+        'active': context.view_layer.objects.active,
+        'selected': list(context.selected_objects),
+    }
+
+
+def restore_selection_context(context, state):
+    if context.mode != 'OBJECT' and context.active_object:
+        bpy.ops.object.mode_set(mode='OBJECT')
+
+    bpy.ops.object.select_all(action='DESELECT')
+    for obj in state['selected']:
+        if obj.name in context.view_layer.objects:
+            obj.select_set(True)
+    if state['active'] and state['active'].name in context.view_layer.objects:
+        context.view_layer.objects.active = state['active']
+
+
+def select_transfer_pair(context, source, target):
+    if context.mode != 'OBJECT' and context.active_object:
+        bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.ops.object.select_all(action='DESELECT')
+    source.select_set(True)
+    target.select_set(True)
+    context.view_layer.objects.active = target
+
+
+def ensure_source_armature_modifier(source, target):
+    source_modifiers = [
+        modifier
+        for modifier in source.modifiers
+        if modifier.type == 'ARMATURE' and modifier.object
+    ]
+    if len(source_modifiers) != 1:
+        return None
+
+    source_armature = source_modifiers[0].object
+    target_modifier = next(
+        (
+            modifier
+            for modifier in target.modifiers
+            if modifier.type == 'ARMATURE' and modifier.object == source_armature
+        ),
+        None,
+    )
+    if target_modifier:
+        return target_modifier
+
+    target_modifier = target.modifiers.new(name='Armature', type='ARMATURE')
+    target_modifier.object = source_armature
+    return target_modifier
+
+
+def run_pointer_shape_key_transfer(context, source, target):
+    select_transfer_pair(context, source, target)
+    result = bpy.ops.object.vdt_transfer_surface_shape_keys()
+    if 'FINISHED' not in result:
+        raise RuntimeError("Shape Key transfer did not finish.")
+
+
+def run_pointer_robust_weight_transfer(context, source, target):
+    if not hasattr(context.scene, 'robust_weight_transfer_settings'):
+        raise RuntimeError("Robust Weight Transfer add-on is not enabled.")
+
+    settings = context.scene.robust_weight_transfer_settings
+    previous_source = settings.source_object
+    previous_apply_to_selected = settings.apply_to_selected
+    previous_use_deformed_target = settings.use_deformed_target
+
+    try:
+        settings.source_object = source
+        settings.apply_to_selected = False
+        # The target is already the exact mesh that will be exported. Evaluating
+        # topology modifiers again can change its vertex count and invalidate
+        # transferred Shape Keys.
+        settings.use_deformed_target = False
+        select_transfer_pair(context, source, target)
+
+        if not bpy.ops.object.skin_weight_transfer.poll():
+            raise RuntimeError(
+                "Robust Weight Transfer cannot run with the current source/target. "
+                "Check that the source has one Armature modifier and deform groups."
+            )
+
+        result = bpy.ops.object.skin_weight_transfer()
+        if 'FINISHED' not in result:
+            raise RuntimeError("Robust Weight Transfer did not finish.")
+
+        ensure_source_armature_modifier(source, target)
+    finally:
+        settings.source_object = previous_source
+        settings.apply_to_selected = previous_apply_to_selected
+        settings.use_deformed_target = previous_use_deformed_target
+
+
+class OBJECT_OT_vdt_pointer_transfer_shape_keys(Operator):
+    bl_idname = "object.vdt_pointer_transfer_shape_keys"
+    bl_label = "Transfer Shape Keys"
+    bl_description = "Transfer Shape Keys from the active target's Transfer Source"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        state = capture_selection_context(context)
+        try:
+            source, target = get_pointer_transfer_pair(context)
+            run_pointer_shape_key_transfer(context, source, target)
+        except Exception as error:
+            self.report({'ERROR'}, str(error))
+            return {'CANCELLED'}
+        finally:
+            restore_selection_context(context, state)
+
+        self.report({'INFO'}, f'Transferred Shape Keys from "{source.name}" to "{target.name}".')
+        return {'FINISHED'}
+
+
+class OBJECT_OT_vdt_pointer_transfer_weights(Operator):
+    bl_idname = "object.vdt_pointer_transfer_weights"
+    bl_label = "Transfer Robust Weights"
+    bl_description = "Run Robust Weight Transfer from the active target's Transfer Source"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        state = capture_selection_context(context)
+        try:
+            source, target = get_pointer_transfer_pair(context)
+            run_pointer_robust_weight_transfer(context, source, target)
+        except Exception as error:
+            self.report({'ERROR'}, str(error))
+            return {'CANCELLED'}
+        finally:
+            restore_selection_context(context, state)
+
+        self.report({'INFO'}, f'Transferred robust weights from "{source.name}" to "{target.name}".')
+        return {'FINISHED'}
+
+
+class OBJECT_OT_vdt_pointer_transfer_all(Operator):
+    bl_idname = "object.vdt_pointer_transfer_all"
+    bl_label = "Transfer Shape Keys + Weights"
+    bl_description = (
+        "Transfer Shape Keys, then Robust skin weights, from the active "
+        "target's Transfer Source"
+    )
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        state = capture_selection_context(context)
+        try:
+            source, target = get_pointer_transfer_pair(context)
+            run_pointer_shape_key_transfer(context, source, target)
+            run_pointer_robust_weight_transfer(context, source, target)
+        except Exception as error:
+            self.report({'ERROR'}, str(error))
+            return {'CANCELLED'}
+        finally:
+            restore_selection_context(context, state)
+
+        self.report(
+            {'INFO'},
+            f'Transferred Shape Keys and robust weights from "{source.name}" to "{target.name}".'
+        )
+        return {'FINISHED'}
+
+
 # -----------------------------------------------------------------------------
 # UI
 # -----------------------------------------------------------------------------
@@ -782,12 +980,48 @@ class VIEW3D_PT_vertex_data_tools_panel(Panel):
         box.prop(props, "overwrite_shape_keys")
         box.operator("object.vdt_transfer_surface_shape_keys", icon='SHAPEKEY_DATA')
 
+        layout.separator()
+
+        # Export transfer source section
+        box = layout.box()
+        box.label(text="Export Transfer Source")
+        if obj and obj.type in {'MESH', 'CURVES'}:
+            object_props = obj.vdt_object_props
+            box.label(text=f"Target: {obj.name}")
+            box.prop(object_props, "transfer_source", text="Source")
+
+            if obj.type == 'MESH':
+                row = box.row(align=True)
+                row.operator(
+                    "object.vdt_pointer_transfer_shape_keys",
+                    text="Shape Keys",
+                    icon='SHAPEKEY_DATA',
+                )
+                row.operator(
+                    "object.vdt_pointer_transfer_weights",
+                    text="Weights",
+                    icon='MOD_VERTEX_WEIGHT',
+                )
+                box.operator(
+                    "object.vdt_pointer_transfer_all",
+                    text="Shape Keys + Robust Weights",
+                    icon='ARMATURE_DATA',
+                )
+            else:
+                box.label(text="Used automatically during export", icon='INFO')
+        else:
+            box.label(text="Select an active mesh or curves object")
+
 
 classes = (
     VDT_Properties,
+    VDT_ObjectProperties,
     MESH_OT_vdt_set_active_vertex_color_value,
     MESH_OT_vdt_set_vertex_group_value,
     OBJECT_OT_vdt_transfer_surface_shape_keys,
+    OBJECT_OT_vdt_pointer_transfer_shape_keys,
+    OBJECT_OT_vdt_pointer_transfer_weights,
+    OBJECT_OT_vdt_pointer_transfer_all,
     VIEW3D_PT_vertex_data_tools_panel,
 )
 
@@ -797,9 +1031,11 @@ def register():
         bpy.utils.register_class(cls)
 
     bpy.types.Scene.vdt_props = PointerProperty(type=VDT_Properties)
+    bpy.types.Object.vdt_object_props = PointerProperty(type=VDT_ObjectProperties)
 
 
 def unregister():
+    del bpy.types.Object.vdt_object_props
     del bpy.types.Scene.vdt_props
 
     for cls in reversed(classes):
