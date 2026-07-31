@@ -1026,12 +1026,24 @@ classes = (
 )
 
 
+def schedule_n_panel_sub_tabs_refresh():
+    def refresh_view3d_sub_tabs():
+        try:
+            bpy.ops.n_panel_sub_tabs.update(etype_names_str="VIEW_3D")
+        except Exception as error:
+            print(f"[Vertex Data Tools] N Panel Sub Tabs refresh skipped: {error}")
+        return None
+
+    bpy.app.timers.register(refresh_view3d_sub_tabs, first_interval=0.2)
+
+
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
 
     bpy.types.Scene.vdt_props = PointerProperty(type=VDT_Properties)
     bpy.types.Object.vdt_object_props = PointerProperty(type=VDT_ObjectProperties)
+    schedule_n_panel_sub_tabs_refresh()
 
 
 def unregister():
