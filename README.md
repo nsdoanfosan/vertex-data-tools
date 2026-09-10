@@ -154,3 +154,21 @@ The main transfer tuning constants are `PROXIMITY_SAMPLE_COUNT` and
 `DEFORMATION_EPSILON`. Preserve the operator's rollback path when changing the
 shape-key workflow so a partial failure does not leave temporary or half-created
 keys behind.
+
+### Evaluated procedural hair transfer
+
+For hair already following a linked face through its modifier stack, set
+`source_object['vdt_evaluated_shape_keys'] = True` and retain the existing
+Transfer Source pointer and UE Shape Keys transfer flag. Send2UE calls
+`evaluated_shape_keys.bake_evaluated_shape_keys(character, entries)` on disposable
+card meshes before joining them. It samples the actual deformation for every
+source morph, checks topology and instance identity, and restores source
+animation, values and mutes. Failed sampling restores the original target data.
+
+Send2UE then marks the temporary joined transfer complete so a second proximity
+pass cannot overwrite these keys. This is opt-in; ordinary mesh proximity
+transfer is unchanged. Exported morphs use the standard linear blend-shape model;
+nonlinear modifier combinations are not baked as additional corrective keys.
+
+Regression check (no preference save):
+`blender --background --factory-startup --python-exit-code 1 --python tests/blender_evaluated_shape_keys_smoke.py`
